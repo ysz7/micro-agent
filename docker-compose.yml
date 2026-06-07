@@ -1,0 +1,13 @@
+# Run the agent as a service. Copy .env.example -> .env first.
+#   docker compose up --build
+services:
+  agent:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8181:8181"
+    volumes:
+      # Persist the agent sandbox + state store across restarts.
+      - ./workspace:/app/workspace
+    restart: unless-stopped

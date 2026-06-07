@@ -1,0 +1,12 @@
+# RSS research agent — vertical config
+name: rss-research
+store: state.json          # JSON store; holds the seen-URL dedup set
+retries: 2
+
+# Feeds the agent pulls from. Add or remove freely — no code changes.
+feeds:
+  - https://hnrss.org/frontpage
+  - https://feeds.arstechnica.com/arstechnica/index
+
+# Max new items to return per fetch.
+max_items: 12

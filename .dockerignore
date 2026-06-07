@@ -1,0 +1,25 @@
+# Keep the build context (and image) small and secret-free.
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Secrets are injected at runtime via --env-file / compose env_file, never baked.
+.env
+.env.*
+
+# Per-agent runtime state — mounted as a volume, not copied in.
+workspace/
+examples/*/workspace/
+*.log
+*.db
+*.sqlite
+
+# Local-only (README.md is kept — pyproject references it at build time)
+.claude/
+_probe.py
+PLAN.MD
+Dockerfile
+docker-compose.yml

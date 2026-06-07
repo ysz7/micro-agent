@@ -1,0 +1,30 @@
+[project]
+name = "micro-agent"
+version = "0.1.0"
+description = "Lightweight modular vertical-agent template on Pydantic AI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic-ai-slim[openai,anthropic]>=0.0.40",
+    "rich>=13.7",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Opt-in: external MCP tool servers. Install with:  uv sync --extra mcp
+mcp = ["mcp>=1.0"]
+
+[project.scripts]
+agent = "agent.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]
+
+[tool.uv]
+package = true

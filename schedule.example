@@ -1,0 +1,45 @@
+# ── Scheduling micro-agent ───────────────────────────────────────────────────
+# The agent runs one-shot from a task string, so any external scheduler drives
+# recurring runs. No scheduler is baked into the core. Pick your platform below.
+# Replace /path/to/agent-folder with this folder's absolute path.
+
+# ── cron (Linux/macOS) ───────────────────────────────────────────────────────
+# Edit with: crontab -e
+#
+#   # every hour, on the hour
+#   0 * * * * cd /path/to/agent-folder && ./run.sh "Run the hourly briefing" >> workspace/cron.log 2>&1
+#
+#   # every minute (e.g. a trading agent)
+#   * * * * * cd /path/to/agent-folder && ./run.sh "Check positions and act" >> workspace/cron.log 2>&1
+
+
+# ── systemd timer (Linux) ────────────────────────────────────────────────────
+# /etc/systemd/system/micro-agent.service
+#
+#   [Unit]
+#   Description=micro-agent one-shot run
+#   [Service]
+#   Type=oneshot
+#   WorkingDirectory=/path/to/agent-folder
+#   ExecStart=/path/to/agent-folder/run.sh "Run the hourly briefing"
+#
+# /etc/systemd/system/micro-agent.timer
+#
+#   [Unit]
+#   Description=Run micro-agent hourly
+#   [Timer]
+#   OnCalendar=hourly
+#   Persistent=true
+#   [Install]
+#   WantedBy=timers.target
+#
+# Enable: systemctl enable --now micro-agent.timer
+
+
+# ── Windows Task Scheduler ───────────────────────────────────────────────────
+# Run in PowerShell (adjust the path and schedule):
+#
+#   $action  = New-ScheduledTaskAction -Execute "powershell.exe" `
+#       -Argument "-File C:\path\to\agent-folder\run.ps1 'Run the hourly briefing'"
+#   $trigger = New-ScheduledTaskTrigger -Daily -At 9am
+#   Register-ScheduledTask -TaskName "micro-agent" -Action $action -Trigger $trigger

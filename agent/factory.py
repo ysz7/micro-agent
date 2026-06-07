@@ -1,0 +1,46 @@
+"""The single composition root: wire model + persona + tools into an Agent.
+
+Everything else (entrypoints, server, console) calls :func:`build_agent`. This
+is the only function that constructs the Pydantic AI ``Agent``; swap any leaf
+(model via ``.env``, tools via a dropped file, persona via ``persona.md``)
+without changing this signature.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic_ai import Agent
+
+from .config import Config
+from .context import AgentDeps
+from .mcp import load_mcp_servers
+from .model import build_model
+from .registry import discover_tools
+
+
+def build_agent(config: Config, output_type: Any | None = None) -> Agent:
+    """Compose ``Agent(model, system_prompt, deps_type, output_type, tools)``.
+
+    Args:
+        config: A loaded :class:`Config`.
+        output_type: Optional Pydantic model for structured output. When ``None``
+            the agent returns plain text.
+    """
+    model = build_model(config)
+    tools = discover_tools(config)
+
+    kwargs: dict[str, Any] = {
+        "system_prompt": config.persona,
+        "deps_type": AgentDeps,
+        "tools": tools,
+        "retries": int(config.settings.get("retries", 2)),
+    }
+    if output_type is not None:
+        kwargs["output_type"] = output_type
+
+    mcp_servers = load_mcp_servers(config)
+    if mcp_servers:
+        kwargs["toolsets"] = mcp_servers
+
+    return Agent(model, **kwargs)

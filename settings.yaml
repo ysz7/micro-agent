@@ -1,0 +1,33 @@
+# ── micro-agent vertical config (non-secret) ─────────────────────────────────
+# Loaded into deps.settings and available to every tool via ctx.deps.settings.
+# Secrets go in .env, not here.
+
+# Display name for this agent (defaults to the folder name).
+name: micro-agent
+
+# State store filename inside workspace/. Use *.json (readable) or *.db (SQLite).
+store: state.json
+
+# How many times Pydantic AI retries a failed tool/model call.
+retries: 2
+
+# ── External MCP tool servers (optional) ─────────────────────────────────────
+# Opt-in: install with `uv sync --extra mcp`, then declare servers here. Their
+# tools appear to the agent like built-ins (prefixed with `name`). stdio servers
+# are spawned locally; remote servers use `url`. See examples/mcp_demo/.
+# mcp:
+#   - name: demo
+#     command: python
+#     args: ["examples/mcp_demo/echo_server.py"]
+#   - name: docs
+#     url: https://example.com/mcp
+#     headers:
+#       Authorization: "Bearer ..."
+
+# ── Vertical settings — add your own below ───────────────────────────────────
+# Tools read these via ctx.deps.settings["..."]. Examples:
+# symbols: [AAPL, MSFT, NVDA]
+# thresholds:
+#   max_position: 1000
+# feeds:
+#   - https://hnrss.org/frontpage
