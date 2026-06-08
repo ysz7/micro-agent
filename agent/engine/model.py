@@ -14,7 +14,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from .config import Config
+from ..runtime.config import Config
 
 
 def build_model(config: Config) -> Model:

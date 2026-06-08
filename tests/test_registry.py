@@ -1,7 +1,7 @@
 """Tool discovery: built-ins always present; tools/*.py auto-discovered."""
 
-from agent.config import load_config
-from agent.registry import discover_tools, tool_names
+from agent.runtime.config import load_config
+from agent.engine.registry import discover_tools, tool_names
 
 _TOOL_FILE = '''\
 def add(a: int, b: int) -> int:

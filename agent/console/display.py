@@ -12,6 +12,7 @@ module, so headless and server runs stay free of ``rich``.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -30,9 +31,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from .config import Config
-from .context import AgentDeps
-from .registry import tool_names
+from ..runtime.config import Config
+from ..runtime.context import AgentDeps
+from ..engine.registry import tool_names
 
 CORAL = "#d95767"
 console = Console()
@@ -297,29 +298,41 @@ def answer(text: str) -> None:
 # ── Server monitor (live request feed for `--serve` from the menu) ───────────
 
 class ServerMonitor:
-    """A rich live feed of incoming server requests.
+    """A rich live feed + running stats for the interactive serve console.
 
-    Passed to :func:`agent.server.serve`; the server calls these hooks (it never
-    imports rich itself, so headless/Docker stays clean). Each request prints an
-    arrival line and a completion line with status · tokens · elapsed.
+    Passed to :func:`agent.server.serve` / ``start_background``; the server calls
+    these hooks (it never imports rich itself, so headless/Docker stays clean).
+    Each request prints an arrival line and a completion line; counters feed
+    :meth:`print_stats`.
     """
 
     def __init__(self, agent_name: str, port: int):
         self.agent_name = agent_name
         self.port = port
+        self.started = time.time()
+        self.requests = 0
+        self.errors = 0
+        self.tokens = 0
+        self.total_time = 0.0
+        self._lock = threading.Lock()
 
     def on_start(self) -> None:
         console.print(
             Panel(
                 f"[bold]{self.agent_name}[/] serving on "
-                f"[bold]http://0.0.0.0:{self.port}[/]\n"
-                f"[dim]POST /task · GET /health · Ctrl+C to stop[/]",
+                f"[bold]http://0.0.0.0:{self.port}[/]   [dim]· Ctrl+C to stop[/]\n"
+                f"[dim]browser  http://localhost:{self.port}/task?q=hi[/]\n"
+                f"[dim]health   http://localhost:{self.port}/health[/]\n"
+                f"[dim]curl     curl -X POST localhost:{self.port}/task "
+                f"-d '{{\"task\":\"hi\"}}'[/]",
                 border_style=CORAL,
                 title="[dim]server monitor[/]",
             )
         )
 
     def on_request(self, task: str, client: str = "") -> None:
+        with self._lock:
+            self.requests += 1
         ts = time.strftime("%H:%M:%S")
         line = f"  [dim]{ts}[/] [{CORAL}]→[/] {_esc(_trunc(task, 60))}"
         if client:
@@ -327,8 +340,42 @@ class ServerMonitor:
         console.print(line)
 
     def on_result(self, ok: bool, tokens: int, elapsed: float) -> None:
+        with self._lock:
+            if not ok:
+                self.errors += 1
+            self.tokens += tokens
+            self.total_time += elapsed
         mark = "[green]←[/]" if ok else "[red]←[/]"
         status = "ok" if ok else "error"
         console.print(
             f"           {mark} [dim]{status} · {tokens:,} tok · {elapsed:.1f}s[/]"
         )
+
+    def on_access(self, method: str, path: str, status: int, client: str = "") -> None:
+        """Compact log line for any non-/task request (health, 404, …)."""
+        ts = time.strftime("%H:%M:%S")
+        color = "green" if status < 400 else ("yellow" if status < 500 else "red")
+        line = (
+            f"  [dim]{ts}[/] [dim]{method}[/] {_esc(_trunc(path, 40))}  "
+            f"[{color}]{status}[/]"
+        )
+        if client:
+            line += f"  [dim]({client})[/]"
+        console.print(line)
+
+    def print_stats(self) -> None:
+        up = int(time.time() - self.started)
+        h, rem = divmod(up, 3600)
+        m, s = divmod(rem, 60)
+        uptime = f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
+        avg = self.total_time / self.requests if self.requests else 0.0
+        ok = self.requests - self.errors
+        grid = Table.grid(padding=(0, 2))
+        grid.add_column(style="dim", justify="right")
+        grid.add_column()
+        grid.add_row("uptime", uptime)
+        grid.add_row("requests", f"[bold]{self.requests}[/]  ([green]{ok} ok[/], "
+                                 f"{'[red]' if self.errors else '[dim]'}{self.errors} err[/])")
+        grid.add_row("tokens", f"{self.tokens:,}")
+        grid.add_row("avg time", f"{avg:.1f}s")
+        console.print(Panel(grid, border_style="dim", title="[dim]stats[/]"))

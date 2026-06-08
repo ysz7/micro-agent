@@ -6,8 +6,8 @@ import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel
 
-from agent.config import Config
-from agent.model import build_model
+from agent.runtime.config import Config
+from agent.engine.model import build_model
 
 
 def _cfg(provider: str, base_url: str | None = None) -> Config:

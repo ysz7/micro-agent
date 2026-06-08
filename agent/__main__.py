@@ -1,6 +1,6 @@
 """Entrypoint: one-shot · REPL · ``--serve``.
 
-A thin layer over the same Agent built by :func:`agent.factory.build_agent`:
+A thin layer over the same Agent built by :func:`agent.engine.factory.build_agent`:
 
     agent "summarize the README"      # one-shot, rendered via the console
     agent                             # interactive REPL
@@ -16,11 +16,11 @@ import argparse
 import asyncio
 import sys
 
-from . import display
-from .config import load_config
-from .context import build_deps, close_deps
-from .factory import build_agent
-from .registry import discover_tools
+from .console import display
+from .runtime.config import load_config
+from .runtime.context import build_deps, close_deps
+from .engine.factory import build_agent
+from .engine.registry import discover_tools
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
 
     if args.menu:
-        from . import menu
+        from .console import menu
 
         return menu.run(args.root)
 
@@ -97,7 +97,7 @@ def _repl(agent, config, deps) -> int:
             display.info("Type a task. Commands: /help · /tools · /quit")
             continue
         if task == "/tools":
-            from .registry import tool_names
+            from .engine.registry import tool_names
 
             display.info("tools: " + ", ".join(tool_names(tools)))
             continue

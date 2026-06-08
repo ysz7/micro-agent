@@ -17,8 +17,8 @@ import inspect
 from pathlib import Path
 from typing import Callable
 
-from .config import Config
-from .tools.builtins import BUILTIN_TOOLS
+from ..runtime.config import Config
+from ..tools.builtins import BUILTIN_TOOLS
 
 
 def _load_module_functions(py_file: Path) -> list[Callable]:

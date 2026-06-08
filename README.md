@@ -192,26 +192,21 @@ docker compose up --build      # serves POST /task on :8181
 
 ```
 micro-agent/
-├── agent/                🧊 the frozen engine (never edited per vertical)
-│   ├── __main__.py       entrypoint: one-shot · REPL · --serve
-│   ├── config.py         .env + settings.yaml + persona.md loader
-│   ├── context.py        AgentDeps — shared deps injected into every tool
-│   ├── store.py          pluggable state store (JSON | SQLite)
-│   ├── model.py          PROVIDER/MODEL/.env → Pydantic AI Model
-│   ├── registry.py       auto-discover tools/*.py + builtins
-│   ├── factory.py        compose the Agent (model + persona + tools + MCP)
-│   ├── mcp.py            optional MCP server seam
-│   ├── toolkit.py        reusable helpers (http+retries, cache, rss)
-│   ├── display.py        majestic rich console (tree · spinner · stats)
-│   ├── server.py         stdlib HTTP POST /task
-│   └── tools/builtins.py read_file · write_file · list_dir · run_shell · fetch_url
-├── persona.md            ✍️ the vertical's system prompt
-├── settings.yaml         ✍️ non-secret config (feeds, symbols, thresholds, mcp)
-├── .env                  ✍️ secrets (provider, model, key)
-├── tools/                ✍️ drop-in custom tools (auto-discovered)
-├── examples/             filled-in verticals to copy from
-├── scripts/              run · new · fleet helpers (ps1 + sh)
-├── start.cmd / start.sh  double-click launchers
+├── agent/                  🧊 the frozen engine (never edited per vertical)
+│   ├── __main__.py         entrypoint: menu · one-shot · REPL · --serve
+│   ├── __init__.py         public API: `from agent import AgentDeps, parse_rss`
+│   ├── runtime/            config · context (AgentDeps) · store (JSON|SQLite)
+│   ├── engine/             model · registry · factory · mcp (builds the Agent)
+│   ├── tools/              builtins (5 tools) · toolkit (http/cache/rss helpers)
+│   ├── console/            display (rich tree · spinner · stats) · menu
+│   └── server/             stdlib HTTP POST /task + live monitor
+├── persona.md              ✍️ the vertical's system prompt
+├── settings.yaml           ✍️ non-secret config (feeds, symbols, thresholds, mcp)
+├── .env                    ✍️ secrets (provider, model, key)
+├── tools/                  ✍️ drop-in custom tools (auto-discovered)
+├── examples/               filled-in verticals to copy from
+├── scripts/                install · run · new · fleet helpers (ps1 + sh)
+├── start.cmd / start.sh    double-click launchers (start menu)
 └── Dockerfile · docker-compose.yml
 ```
 

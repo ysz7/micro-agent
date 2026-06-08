@@ -12,8 +12,8 @@ from typing import Any
 
 from pydantic_ai import Agent
 
-from .config import Config
-from .context import AgentDeps
+from ..runtime.config import Config
+from ..runtime.context import AgentDeps
 from .mcp import load_mcp_servers
 from .model import build_model
 from .registry import discover_tools

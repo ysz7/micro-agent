@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from pydantic_ai import RunContext
 
-from agent.context import AgentDeps
-from agent.toolkit import parse_rss
+from agent import AgentDeps, parse_rss
 
 _SEEN_KEY = "seen_urls"
 

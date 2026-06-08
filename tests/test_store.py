@@ -2,7 +2,7 @@
 
 import pytest
 
-from agent.store import JSONStore, SQLiteStore, open_store
+from agent.runtime.store import JSONStore, SQLiteStore, open_store
 
 
 @pytest.mark.parametrize("filename", ["state.json", "state.db", "state.sqlite"])

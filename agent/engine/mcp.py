@@ -3,7 +3,7 @@
 Opt-in and lean-by-default: nothing here runs unless ``settings.yaml`` declares an
 ``mcp:`` list AND the optional ``mcp`` dependency is installed
 (``uv sync --extra mcp``). Pydantic AI exposes MCP servers as *toolsets*, which
-:func:`agent.factory.build_agent` passes straight to the ``Agent``; their tools
+:func:`agent.engine.factory.build_agent` passes straight to the ``Agent``; their tools
 then appear to the model exactly like built-in tools.
 
 settings.yaml example::
@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import Config
+from ..runtime.config import Config
 
 
 def load_mcp_servers(config: Config) -> list[Any]:

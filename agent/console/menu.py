@@ -234,10 +234,10 @@ def _status(root: Path) -> str:
 
 
 def _chat(root) -> None:
-    from .config import load_config
-    from .context import build_deps, close_deps
-    from .factory import build_agent
-    from .__main__ import _repl
+    from ..runtime.config import load_config
+    from ..runtime.context import build_deps, close_deps
+    from ..engine.factory import build_agent
+    from ..__main__ import _repl
 
     console.clear()
     config = load_config(root)
@@ -253,8 +253,14 @@ def _chat(root) -> None:
 
 
 def _serve(root) -> None:
-    from .config import load_config
-    from .server import serve
+    """Run the HTTP server with a clean live request feed (read-only).
+
+    No input prompt here — a prompt would fight the background feed for the
+    cursor. You send requests from a browser (``/task?q=...``), curl, or another
+    terminal; they all appear in the feed. Ctrl+C stops and returns to the menu.
+    """
+    from ..runtime.config import load_config
+    from ..server import serve
 
     console.clear()
     try:
@@ -268,7 +274,16 @@ def _serve(root) -> None:
 
     config = load_config(root)
     monitor = display.ServerMonitor(config.agent_name, port)
-    serve(config, port=port, monitor=monitor)   # blocks until Ctrl+C, then returns
+    console.clear()
+    try:
+        serve(config, port=port, monitor=monitor)   # blocks until Ctrl+C; cleans up
+    except KeyboardInterrupt:
+        pass
+    except OSError as exc:                            # e.g. port already in use
+        display.err(f"could not start server on :{port} — {exc}")
+        input("  press Enter to return…")
+        return
+    monitor.print_stats()                            # closing summary on the way out
 
 
 def _settings(root: Path) -> None:

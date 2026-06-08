@@ -1,7 +1,7 @@
 """Two agent instances must not interfere: separate workspace + state store."""
 
-from agent.config import load_config
-from agent.context import build_deps, close_deps
+from agent.runtime.config import load_config
+from agent.runtime.context import build_deps, close_deps
 
 
 def test_two_instances_are_isolated(tmp_path):

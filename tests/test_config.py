@@ -1,6 +1,6 @@
 """Config loader: reads settings.yaml + persona.md, applies provider defaults."""
 
-from agent.config import load_config
+from agent.runtime.config import load_config
 
 
 def test_defaults_when_empty(tmp_path, monkeypatch):

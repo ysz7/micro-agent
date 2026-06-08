@@ -10,7 +10,7 @@ What it shows:
 | Drop-in tool | [`tools/rss_fetch.py`](tools/rss_fetch.py) — one function, auto-discovered |
 | `settings.yaml` | the `feeds:` list and `max_items` |
 | State store | seen-URL dedup set, so items never repeat |
-| Shared deps | uses `ctx.deps.http` + `ctx.deps.settings` + `agent.toolkit.parse_rss` |
+| Shared deps | uses `ctx.deps.http` + `ctx.deps.settings` + `parse_rss` (`from agent import parse_rss`) |
 | `persona.md` | the research-assistant system prompt |
 | `output_type` | [`brief.py`](brief.py) returns a typed `Briefing` |
 

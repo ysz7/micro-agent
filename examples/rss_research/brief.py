@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from agent.config import load_config
-from agent.context import build_deps, close_deps
-from agent.factory import build_agent
+from agent.runtime.config import load_config
+from agent.runtime.context import build_deps, close_deps
+from agent.engine.factory import build_agent
 
 
 class BriefingItem(BaseModel):

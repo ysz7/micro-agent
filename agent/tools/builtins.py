@@ -17,7 +17,7 @@ from pathlib import Path
 
 from pydantic_ai import RunContext
 
-from ..context import AgentDeps
+from ..runtime.context import AgentDeps
 
 
 def _resolve(ctx: RunContext[AgentDeps], path: str) -> Path:
