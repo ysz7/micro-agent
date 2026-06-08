@@ -56,44 +56,66 @@ A fresh copy is already a working general-purpose agent with five built-in tools
 
 ## 🚀 Install
 
-**1. Install [`uv`](https://docs.astral.sh/uv/)** (the only prerequisite — it
-manages Python, the venv, and dependencies):
+### One-liner — into an empty folder
 
-```bash
+Make a folder, open a terminal in it, and paste. This **downloads the project,
+installs `uv` + all dependencies, and creates `.env`** — nothing pre-installed
+needed (`uv` is a standalone binary that brings its own Python):
+
+```powershell
 # Windows (PowerShell)
-irm https://astral.sh/uv/install.ps1 | iex
-
-# Linux / macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
+irm https://raw.githubusercontent.com/yourname/micro-agent/main/scripts/install.ps1 | iex
 ```
 
-**2. Get the template and sync dependencies:**
+```bash
+# Linux / macOS
+curl -LsSf https://raw.githubusercontent.com/yourname/micro-agent/main/scripts/install.sh | sh
+```
+
+Then **edit `.env`** (set `PROVIDER` / `MODEL` / `API_KEY`) and launch:
+double-click **`start.cmd`** (Windows) / run **`./start.sh`** (Linux/macOS).
+Every run after that is just `start`.
+
+### Manual (clone first)
 
 ```bash
 git clone https://github.com/yourname/micro-agent.git
 cd micro-agent
-uv sync
-```
-
-**3. Configure a provider:**
-
-```bash
-cp .env.example .env        # then set PROVIDER / MODEL / API_KEY
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
+./scripts/install.sh                                           # Linux/macOS
 ```
 
 > 💡 No API key? Use **Ollama**: set `PROVIDER=ollama`, `MODEL=llama3.1:8b`,
 > `BASE_URL=http://localhost:11434/v1` and run fully offline.
 
+> ⚙️ Publishing your own copy? Replace `yourname/micro-agent` in the one-liners
+> and set the repo at the top of `scripts/install.ps1` / `scripts/install.sh`
+> (or `MICROAGENT_REPO=...`). The installer works the same whether run remotely
+> (empty folder → it clones) or locally (inside the repo → it just sets up).
+
 ## ▶️ Usage
+
+**Easiest — the launchers.** Double-click **`start.cmd`** (Windows) or run
+**`./start.sh`** (Linux/macOS) to open a terminal already in the REPL. They `cd`
+into the folder for you, find `uv` (with a clear hint if it's missing), and
+auto-install deps on first run. Pass a task or flags too:
+
+```bash
+start.cmd "Summarize the README in three bullets"   # one-shot
+start.cmd                                            # interactive REPL
+start.cmd --serve                                    # HTTP service
+```
+
+**From a terminal — `uv` directly** (run from inside the agent folder):
 
 ```bash
 uv run agent "Summarize the README in three bullets"   # one-shot
 uv run agent                                            # interactive REPL
 ```
 
-Or **double-click `start.cmd`** (Windows) / run **`./start.sh`** (Linux/macOS) to
-open a terminal already in the REPL. Pass a task to run it once:
-`start.cmd "your task"`.
+> ℹ️ `uv run agent` must run **from inside the agent folder** — `uv` locates the
+> project there, and the agent loads `.env` / `persona.md` / `settings.yaml` from
+> the current directory. (Or pass `--root path/to/agent` from elsewhere.)
 
 Run as an HTTP service:
 
