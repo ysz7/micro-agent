@@ -28,6 +28,10 @@ is already built and stays frozen: provider wiring (OpenAI · Anthropic ·
 OpenRouter · offline Ollama), automatic tool discovery, the agent loop,
 cross-run memory, a live console. You write only what makes your agent *yours*.
 
+And unlike heavyweight frameworks, there's no magic to fight: the whole engine
+is ~2k lines of readable Python on Pydantic AI — small enough to read in an
+evening, simple enough to trust in production.
+
 It runs in any environment from day one — interactive terminal, headless HTTP
 service, Docker container, or on a schedule via cron / Task Scheduler. A fresh
 copy is already a working general-purpose agent with five built-in tools:
