@@ -36,13 +36,7 @@ It runs in any environment from day one — interactive terminal, headless HTTP
 service, Docker container, or on a schedule via cron / Task Scheduler. A fresh
 copy is already a working general-purpose agent with five built-in tools:
 
-```text
-  › write hello.txt with "hi" then list the workspace
-  ┌ write_file  ·  hello.txt · 2 chars  ·  Wrote 2 chars to workspace/hello.txt
-  ├ list_dir    ·  .  ·  2 items
-  └ done
-  ↳  1,164 tok (1,084→80)  ·  $0.0003  ·  2.3s
-```
+<img src="docs/assets/genesis-agent-chat-cli.png" alt="genesis-agent live console: identity and capabilities panels, then a task executed as a reasoning tree with a tokens/time footer">
 
 ## Quickstart
 
@@ -96,7 +90,11 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
 
 **`start.cmd`** / **`./start.sh`** opens an arrow-key start menu: Chat ·
 Scheduler · Settings · Serve · Quit. The launchers find `uv` and auto-install
-deps on first run. Pass a task or flags to skip the menu:
+deps on first run.
+
+<img src="docs/assets/genesis-agent-welcome-cli.png" alt="genesis-agent start menu" width="300">
+
+Pass a task or flags to skip the menu:
 
 ```bash
 start.cmd "Summarize the README in three bullets"   # one-shot
