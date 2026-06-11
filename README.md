@@ -17,12 +17,20 @@
 
 ---
 
-- **Frozen engine** (`agent/`) — model wiring, tool discovery, the agent loop,
-  the console, the HTTP server. Built once, never edited per agent.
-- **Per-agent** — `persona.md` · `tools/*.py` · `settings.yaml` · `.env`.
-  That's all you write for a new vertical.
+You want your own AI agent — a trading assistant, a research bot, a support
+automation. Building it from scratch means weeks of plumbing before any real
+work: model APIs, tool calling, retries, state, a console, deployment.
 
-A fresh copy is already a working general-purpose agent with five built-in tools.
+**genesis-agent removes that part.** It's a strong, finished foundation for
+agents of any complexity: copy the folder, describe your agent's role in
+`persona.md`, drop your domain tools into `tools/` — done. Everything generic
+is already built and stays frozen: provider wiring (OpenAI · Anthropic ·
+OpenRouter · offline Ollama), automatic tool discovery, the agent loop,
+cross-run memory, a live console. You write only what makes your agent *yours*.
+
+It runs in any environment from day one — interactive terminal, headless HTTP
+service, Docker container, or on a schedule via cron / Task Scheduler. A fresh
+copy is already a working general-purpose agent with five built-in tools:
 
 ```text
   › write hello.txt with "hi" then list the workspace
