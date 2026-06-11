@@ -5,17 +5,14 @@ on:
     branches: [main]
   pull_request:
 
-env:
-  PYTHONUTF8: "1"
-
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-    name: pytest · py${{ matrix.python-version }} · windows
+    name: pytest · py${{ matrix.python-version }} · linux
     steps:
       - uses: actions/checkout@v4
 
