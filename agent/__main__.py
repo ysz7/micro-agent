@@ -99,6 +99,12 @@ def _one_shot(agent, task: str, deps, model: str) -> int:
 def _repl(agent, config, deps) -> int:
     tools = discover_tools(config)
     display.print_banner(config, tools)
+    # Conversation memory: the running transcript fed back on each turn so the
+    # REPL is a conversation, not amnesia. Capped to the last `history_keep`
+    # messages (context is finite, and UsageLimits would otherwise start failing
+    # long sessions). One-shot and the server stay stateless by design.
+    history: list = []
+    keep = int(config.settings.get("history_keep", 40))
     while True:
         try:
             task = input("  \033[1m›\033[0m ").strip()
@@ -110,7 +116,11 @@ def _repl(agent, config, deps) -> int:
         if task in ("/quit", "/exit", "/q"):
             break
         if task == "/help":
-            display.info("Type a task. Commands: /help · /tools · /quit")
+            display.info("Type a task. Commands: /help · /tools · /clear · /quit")
+            continue
+        if task == "/clear":
+            history.clear()
+            display.info("conversation history cleared")
             continue
         if task == "/tools":
             from .engine.registry import tool_names
@@ -118,8 +128,13 @@ def _repl(agent, config, deps) -> int:
             display.info("tools: " + ", ".join(tool_names(tools)))
             continue
         try:
-            result = asyncio.run(display.run_streamed(agent, task, deps, config.model))
+            result = asyncio.run(
+                display.run_streamed(agent, task, deps, config.model, message_history=history)
+            )
             display.answer(result.output)
+            history.extend(result.new_messages())
+            if len(history) > keep:
+                del history[:-keep]
         except KeyboardInterrupt:
             display.warn("interrupted")
         except UsageLimitExceeded as exc:

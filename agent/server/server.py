@@ -9,6 +9,11 @@
 
 The Agent, model, tools, and deps are all identical to the CLI path — only the
 rendering differs. This module deliberately never imports ``display``.
+
+Each request is **stateless by design**: unlike the REPL (which threads a running
+conversation via ``message_history``), every HTTP task runs independently with no
+memory of prior requests. A caller that wants continuity sends the context in the
+task itself.
 """
 
 from __future__ import annotations

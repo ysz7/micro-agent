@@ -115,11 +115,15 @@ def _limits_summary(limits: Any) -> str:
 # ── Streamed run with live tree ─────────────────────────────────────────────
 
 async def run_streamed(
-    agent: Agent, task: str, deps: AgentDeps, model: str = ""
+    agent: Agent, task: str, deps: AgentDeps, model: str = "", message_history=None
 ) -> Any:
     """Run *agent* on *task*, rendering the live tree, and return the result.
 
-    Returns the Pydantic AI ``AgentRunResult`` (``.output`` / ``.usage``).
+    *message_history* (optional) is a list of prior Pydantic AI messages — the
+    REPL passes it so the model sees earlier turns; one-shot/server omit it.
+
+    Returns the Pydantic AI ``AgentRunResult`` (``.output`` / ``.usage`` /
+    ``.new_messages()``).
     """
     start = time.monotonic()
     step = {"n": 0}
@@ -133,7 +137,10 @@ async def run_streamed(
         # Entering the agent context starts any MCP servers (no-op without them).
         async with agent:
             async with agent.iter(
-                task, deps=deps, usage_limits=deps.config.usage_limits
+                task,
+                deps=deps,
+                usage_limits=deps.config.usage_limits,
+                message_history=message_history,
             ) as run:
                 async for node in run:
                     if Agent.is_model_request_node(node):
