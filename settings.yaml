@@ -67,6 +67,12 @@ limits:
 #   disable: []
 #   confirm: [run_shell]
 
+# ── HTTP server (--serve) ────────────────────────────────────────────────────
+# Per-task wall-clock ceiling, seconds. A task (POST /task or GET /task/stream)
+# that runs longer is cancelled and answered with 504. Guards against a hung
+# model call holding a worker thread forever.
+# serve_timeout: 300
+
 # ── External MCP tool servers (optional) ─────────────────────────────────────
 # Opt-in: install with `uv sync --extra mcp`, then declare servers here. Their
 # tools appear to the agent like built-ins (prefixed with `name`). stdio servers

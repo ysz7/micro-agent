@@ -1,14 +1,24 @@
 """Optional stdlib HTTP service — zero extra dependencies, no rich.
 
-``agent --serve`` mounts a ``POST /task`` endpoint over Python's built-in
-``http.server`` that runs the same Agent headless::
+``agent --serve`` mounts the same Agent headless over Python's built-in
+``http.server``::
 
-    curl -X POST localhost:8181/task \
-         -H 'content-type: application/json' \
-         -d '{"task": "what files are here?"}'
+    POST /task              {"task": "..."}            → {"output": ...}
+    GET  /task?q=...        browser-friendly           → {"output": ...}
+    GET  /task/stream?q=... text/event-stream          → incremental SSE frames
+    GET  /health            open (no auth)             → {"status": "ok"}
 
-The Agent, model, tools, and deps are all identical to the CLI path — only the
-rendering differs. This module deliberately never imports ``display``.
+The Agent, model, tools, and deps are identical to the CLI path — only the
+rendering differs. This module deliberately never imports ``display``; it shares
+the agent event-walk with the CLI through ``engine.runner.iter_events`` instead.
+
+**One event loop, entered once.** A single background loop thread runs for the
+whole serve lifetime, and ``async with agent`` is entered once on it — so MCP
+servers start once, not per request. ``ThreadingHTTPServer`` still gives a thread
+per request; each handler submits its coroutine to the shared loop with
+``run_coroutine_threadsafe`` (the Agent is reentrant-safe in Pydantic AI, and
+``deps`` is lock-guarded). A per-task ``serve_timeout`` (settings, default 300s)
+caps runaway model calls with a ``504``.
 
 Each request is **stateless by design**: unlike the REPL (which threads a running
 conversation via ``message_history``), every HTTP task runs independently with no
@@ -21,6 +31,8 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import queue
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -29,13 +41,40 @@ from ..runtime.config import Config
 from ..runtime.context import build_deps, close_deps
 from ..runtime.runlog import append_run
 from ..engine.factory import build_agent
+from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
+
+MAX_BODY = 1_048_576  # 1 MB — reject larger POST bodies with 413 before reading.
 
 
 def _make_httpd(config: Config, host: str, port: int, monitor):
-    """Build the agent + deps and a configured HTTP server. Returns (httpd, deps)."""
+    """Build the agent + deps + a shared event loop, and a configured server.
+
+    Returns ``(httpd, deps)``. The loop thread and the entered agent context are
+    stashed on the httpd for :func:`_teardown` to unwind on shutdown.
+    """
     agent = build_agent(config)
     deps = build_deps(config)
     token = config.server_token
+    serve_timeout = float(config.settings.get("serve_timeout", 300))
+
+    # One loop for the whole serve lifetime; enter the agent context once on it
+    # (starts MCP servers, if any). Handlers submit coroutines to this loop.
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_forever, daemon=True, name="agent-loop").start()
+    asyncio.run_coroutine_threadsafe(agent.__aenter__(), loop).result()
+
+    def _submit(coro, timeout: float | None = serve_timeout):
+        """Run *coro* on the shared loop, bounded by *timeout*. Blocks the caller.
+
+        The timeout lives inside the coroutine (``wait_for``) so it cancels the
+        agent run rather than orphaning it; ``TimeoutError`` propagates out.
+        """
+        async def _bounded():
+            if timeout is None:
+                return await coro
+            return await asyncio.wait_for(coro, timeout=timeout)
+
+        return asyncio.run_coroutine_threadsafe(_bounded(), loop).result()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):  # quiet default logging
@@ -95,14 +134,25 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 if not self._authorized():
                     return
                 # Browser-friendly: open  http://localhost:PORT/task?q=your+task
-                params = parse_qs(parsed.query)
-                task = (params.get("q") or params.get("task") or [""])[0]
-                if task.strip():
+                task = self._query_task(parsed)
+                if task:
                     self._handle_task(task)
-                else:
-                    self._send(400, {"error": "GET /task needs ?q=<task>"})
+            elif parsed.path == "/task/stream":
+                if not self._authorized():
+                    return
+                task = self._query_task(parsed)
+                if task:
+                    self._handle_stream(task)
             else:
                 self._send(404, {"error": "not found"})
+
+        def _query_task(self, parsed) -> str | None:
+            params = parse_qs(parsed.query)
+            task = (params.get("q") or params.get("task") or [""])[0]
+            if task.strip():
+                return task
+            self._send(400, {"error": f"GET {parsed.path} needs ?q=<task>"})
+            return None
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib naming
             self._detailed = False
@@ -111,8 +161,9 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 return
             if not self._authorized():
                 return
-            length = int(self.headers.get("content-length", 0))
-            raw = self.rfile.read(length) if length else b"{}"
+            raw = self._read_body()
+            if raw is None:
+                return                       # _read_body already sent the error
             try:
                 data = json.loads(raw or b"{}")
                 task = data["task"]
@@ -120,6 +171,22 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
                 self._send(400, {"error": "expected JSON body with a 'task' field"})
                 return
             self._handle_task(task)
+
+        def _read_body(self) -> bytes | None:
+            """Read the request body, enforcing the size limit. None on error sent."""
+            raw_len = self.headers.get("content-length")
+            if raw_len is None:
+                self._send(411, {"error": "content-length required"})
+                return None
+            try:
+                length = int(raw_len)
+            except ValueError:
+                self._send(400, {"error": "invalid content-length"})
+                return None
+            if length > MAX_BODY:
+                self._send(413, {"error": f"request body exceeds {MAX_BODY} bytes"})
+                return None
+            return self.rfile.read(length) if length else b"{}"
 
         def _handle_task(self, task: str) -> None:
             self._detailed = True            # use the detailed monitor feed
@@ -130,7 +197,14 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             # deliver (client closed the tab) must not mislabel a task that ran
             # fine, nor trigger a second send onto a dead socket.
             try:
-                result = asyncio.run(_run(task))
+                result = _submit(agent.run(task, deps=deps, usage_limits=config.usage_limits))
+            except (asyncio.TimeoutError, TimeoutError):
+                elapsed = time.monotonic() - start
+                if monitor:
+                    monitor.on_result(False, 0, elapsed)
+                append_run(deps, task, elapsed, 0, ok=False, error="timeout")
+                self._send(504, {"error": f"task exceeded {serve_timeout:.0f}s timeout"})
+                return
             except Exception as exc:  # noqa: BLE001 - the task itself failed
                 elapsed = time.monotonic() - start
                 if monitor:
@@ -144,24 +218,100 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
             append_run(deps, task, elapsed, _tokens(result), ok=True)
             self._send(200, {"output": _jsonable(result.output)})
 
-    async def _run(task: str):
-        # `async with agent` starts/stops any MCP servers (no-op without them).
-        async with agent:
-            return await agent.run(task, deps=deps, usage_limits=config.usage_limits)
+        def _handle_stream(self, task: str) -> None:
+            """Stream the run as Server-Sent Events: text / tool / tool_result / done."""
+            self._detailed = True
+            start = time.monotonic()
+            if monitor:
+                monitor.on_request(task, self.client_address[0])
+            try:
+                self.send_response(200)
+                self.send_header("content-type", "text/event-stream")
+                self.send_header("cache-control", "no-cache")
+                self.send_header("connection", "close")
+                self.end_headers()
+            except (ConnectionError, BrokenPipeError, OSError):
+                return
 
-    return ThreadingHTTPServer((host, port), Handler), deps
+            # The producer runs on the shared loop and posts frames to a queue;
+            # this handler thread drains the queue and writes them out.
+            q: queue.Queue = queue.Queue()
+
+            async def _produce():
+                async def _drive():
+                    async for ev in iter_events(agent, task, deps):
+                        q.put(("frame", _sse_for(ev)))
+                        if isinstance(ev, Done):
+                            q.put(("done", ev.result))
+                try:
+                    await asyncio.wait_for(_drive(), timeout=serve_timeout)
+                except (asyncio.TimeoutError, TimeoutError):
+                    q.put(("frame", _sse("error", {"error": "timeout"})))
+                except Exception as exc:  # noqa: BLE001
+                    q.put(("frame", _sse("error", {"error": str(exc)})))
+                finally:
+                    q.put(("end", None))
+
+            fut = asyncio.run_coroutine_threadsafe(_produce(), loop)
+            result = None
+            ok = True
+            try:
+                while True:
+                    kind, payload = q.get()
+                    if kind == "end":
+                        break
+                    if kind == "done":
+                        result = payload
+                        continue
+                    try:
+                        self.wfile.write(payload.encode("utf-8"))
+                        self.wfile.flush()
+                    except (ConnectionError, BrokenPipeError, OSError):
+                        fut.cancel()        # client gone — stop the run
+                        ok = False
+                        return
+            finally:
+                if not fut.done():
+                    fut.cancel()
+                elapsed = time.monotonic() - start
+                tokens = _tokens(result) if result is not None else 0
+                ok = ok and result is not None
+                if monitor:
+                    monitor.on_result(ok, tokens, elapsed)
+                append_run(deps, task, elapsed, tokens, ok=ok)
+
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    httpd._agent = agent  # type: ignore[attr-defined]
+    httpd._loop = loop    # type: ignore[attr-defined]
+    return httpd, deps
+
+
+def _teardown(httpd, deps) -> None:
+    """Exit the agent context, stop the loop thread, release deps."""
+    loop = getattr(httpd, "_loop", None)
+    agent = getattr(httpd, "_agent", None)
+    httpd.server_close()
+    if loop is not None and agent is not None:
+        try:
+            asyncio.run_coroutine_threadsafe(
+                agent.__aexit__(None, None, None), loop
+            ).result(timeout=10)
+        except Exception:  # noqa: BLE001 - best-effort shutdown
+            pass
+        loop.call_soon_threadsafe(loop.stop)
+    close_deps(deps)
 
 
 def serve(config: Config, port: int = 8181, monitor=None, host: str = "127.0.0.1") -> int:
-    """Build the agent once and serve ``POST /task`` until interrupted (blocking).
+    """Build the agent once and serve until interrupted (blocking).
 
     Binds *host* (default ``127.0.0.1`` — localhost only). Pass ``0.0.0.0`` to
     accept connections from other machines, e.g. inside a container reached
     through a published port (the Dockerfile does exactly this).
 
-    *monitor* (optional) receives ``on_start`` / ``on_request`` / ``on_result``
-    callbacks for a live request feed. It's the only rendering hook; this module
-    never imports rich, so headless and Docker runs stay dependency-clean.
+    *monitor* (optional) receives ``on_start`` / ``on_request`` / ``on_result`` /
+    ``on_access`` callbacks for a live request feed. It's the only rendering hook;
+    this module never imports rich, so headless and Docker runs stay clean.
     """
     httpd, deps = _make_httpd(config, host, port, monitor)
     if monitor:
@@ -170,31 +320,56 @@ def serve(config: Config, port: int = 8181, monitor=None, host: str = "127.0.0.1
         auth = "  (bearer auth on)" if config.server_token else ""
         print(
             f"genesis-agent '{config.agent_name}' serving on "
-            f"http://{host}:{port}  (POST /task){auth}"
+            f"http://{host}:{port}  (POST /task · GET /task/stream){auth}"
         )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
-        httpd.server_close()
-        close_deps(deps)
+        _teardown(httpd, deps)
     return 0
 
 
 def start_background(config: Config, port: int = 8181, monitor=None, host: str = "127.0.0.1"):
     """Serve in a daemon thread; returns (httpd, deps) for the caller to drive.
 
-    Used by the interactive serve console: the HTTP server runs in the background
-    while the foreground reads commands. Stop with ``httpd.shutdown()`` then
-    ``close_deps(deps)``.
+    Used by the interactive serve console and tests: the HTTP server runs in the
+    background while the foreground drives it. Stop with ``stop_background`` (or
+    ``httpd.shutdown()`` then :func:`_teardown`).
     """
-    import threading
-
     httpd, deps = _make_httpd(config, host, port, monitor)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, deps
 
+
+def stop_background(httpd, deps) -> None:
+    """Stop a :func:`start_background` server and unwind its loop + deps."""
+    httpd.shutdown()
+    _teardown(httpd, deps)
+
+
+# ── SSE framing ──────────────────────────────────────────────────────────────
+
+def _sse(event: str, data: dict) -> str:
+    """One Server-Sent Events frame."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _sse_for(ev) -> str:
+    """Map a runner event to its SSE frame."""
+    if isinstance(ev, Reason):
+        return _sse("text", {"text": ev.text})
+    if isinstance(ev, ToolCall):
+        return _sse("tool", {"name": ev.name, "args": _jsonable(ev.args)})
+    if isinstance(ev, ToolResult):
+        return _sse("tool_result", {"name": ev.name, "result": str(ev.content)})
+    if isinstance(ev, Done):
+        return _sse("done", {"output": _jsonable(ev.result.output)})
+    return _sse("text", {"text": str(ev)})
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
 
 def _jsonable(output: object) -> object:
     """Pydantic models → dict; everything else passes through."""

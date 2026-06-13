@@ -10,8 +10,7 @@ import socket
 import httpx
 
 from agent.runtime.config import load_config
-from agent.runtime.context import close_deps
-from agent.server import start_background
+from agent.server import start_background, stop_background
 
 
 def _free_port() -> int:
@@ -41,6 +40,4 @@ def test_health_open_but_task_needs_token(tmp_path):
         )
         assert r.status_code == 401
     finally:
-        httpd.shutdown()
-        httpd.server_close()
-        close_deps(deps)
+        stop_background(httpd, deps)

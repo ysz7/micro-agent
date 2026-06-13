@@ -19,14 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from pydantic_ai import Agent
-from pydantic_ai.messages import (
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
-    PartDeltaEvent,
-    PartStartEvent,
-    TextPart,
-    TextPartDelta,
-)
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -36,6 +28,7 @@ from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from ..runtime.runlog import append_run
 from ..engine.registry import tool_names
+from ..engine.runner import Done, Reason, ToolCall, ToolResult, iter_events
 
 EMERALD = "#10b981"
 console = Console()
@@ -150,54 +143,29 @@ async def run_streamed(
     """
     start = time.monotonic()
     step = {"n": 0}
-    pending: dict[str, tuple[str, Any]] = {}
+    result = None
 
     status = console.status(f"[{EMERALD}]Thinking…", spinner="dots")
     global _active_status
     _active_status = status
     status.start()
     try:
-        # Entering the agent context starts any MCP servers (no-op without them).
+        # Entering the agent context starts any MCP servers (no-op without them);
+        # `iter_events` (shared with the server's SSE path) walks the run.
         async with agent:
-            async with agent.iter(
-                task,
-                deps=deps,
-                usage_limits=deps.config.usage_limits,
-                message_history=message_history,
-            ) as run:
-                async for node in run:
-                    if Agent.is_model_request_node(node):
-                        text = ""
-                        async with node.stream(run.ctx) as stream:
-                            async for event in stream:
-                                if isinstance(event, PartStartEvent) and isinstance(
-                                    event.part, TextPart
-                                ):
-                                    text += event.part.content or ""
-                                elif isinstance(event, PartDeltaEvent) and isinstance(
-                                    event.delta, TextPartDelta
-                                ):
-                                    text += event.delta.content_delta or ""
-                        if text.strip():
-                            status.stop()
-                            _reason(text, step)
-                            status.start()
-                    elif Agent.is_call_tools_node(node):
-                        async with node.stream(run.ctx) as stream:
-                            async for event in stream:
-                                if isinstance(event, FunctionToolCallEvent):
-                                    name = event.part.tool_name
-                                    pending[event.part.tool_call_id] = (name, event.part.args)
-                                    status.update(f"[{EMERALD}]{name}…")
-                                elif isinstance(event, FunctionToolResultEvent):
-                                    name, args = pending.pop(
-                                        event.part.tool_call_id,
-                                        (event.part.tool_name, {}),
-                                    )
-                                    status.stop()
-                                    _tool_line(name, args, event.part.content, step)
-                                    status.start()
-            result = run.result
+            async for ev in iter_events(agent, task, deps, message_history=message_history):
+                if isinstance(ev, Reason):
+                    status.stop()
+                    _reason(ev.text, step)
+                    status.start()
+                elif isinstance(ev, ToolCall):
+                    status.update(f"[{EMERALD}]{ev.name}…")
+                elif isinstance(ev, ToolResult):
+                    status.stop()
+                    _tool_line(ev.name, ev.args, ev.content, step)
+                    status.start()
+                elif isinstance(ev, Done):
+                    result = ev.result
     except Exception as exc:
         append_run(deps, task, time.monotonic() - start, 0, ok=False, error=str(exc))
         raise
