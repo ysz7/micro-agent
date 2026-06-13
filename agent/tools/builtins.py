@@ -40,18 +40,21 @@ class _SandboxEscape(Exception):
 
 
 def _resolve(ctx: RunContext[AgentDeps], path: str) -> Path:
-    """Resolve *path* against the workspace, enforcing the sandbox.
+    """Resolve *path* for a file tool, enforcing the sandbox.
 
-    Relative paths resolve inside ``workspace/``; absolute paths are taken as
-    given. With the sandbox on (the default), the resolved target must stay
-    within the resolved workspace or :class:`_SandboxEscape` is raised. Both
-    sides are ``.resolve()``-d so symlinks and Windows drive-letter casing
-    compare like-for-like. ``sandbox: false`` restores raw resolution.
+    Relative paths resolve inside ``workspace/files/`` (the agent's default
+    working area — task outputs stay separate from self-authored code under
+    ``workspace/tools`` etc.); reach the siblings with ``../tools/x.py``.
+    Absolute paths are taken as given. With the sandbox on (the default), the
+    resolved target must stay within the resolved ``workspace/`` (not just
+    ``files/``) or :class:`_SandboxEscape` is raised. Both sides are
+    ``.resolve()``-d so symlinks and Windows drive-letter casing compare
+    like-for-like. ``sandbox: false`` restores raw resolution.
     """
     workspace = ctx.deps.workspace
     candidate = Path(path)
     if not candidate.is_absolute():
-        candidate = workspace / candidate
+        candidate = ctx.deps.files_dir / candidate
 
     if ctx.deps.settings.get("sandbox", True) is False:
         return candidate

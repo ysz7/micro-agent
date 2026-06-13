@@ -99,4 +99,21 @@ def build_agent(config: Config, output_type: Any | None = None) -> Agent:
         now = datetime.now().astimezone()
         return f"The current date and time is {now:%Y-%m-%d %H:%M:%S %Z} ({now:%A})."
 
+    # Self-improvement context (Phase 11): surface the skill index and a digest
+    # of recent lessons so the model knows what it has already learned/written.
+    # Full skill text stays on disk (pulled via read_skill) to keep context lean.
+    if (config.settings.get("self_improvement") or {}).get("enabled"):
+        from ..tools.selfimprove import memory_digest, skills_overview
+
+        recall = int(config.settings.get("memory_recall", 5))
+        workspace = config.workspace
+
+        @agent.system_prompt
+        def _skills_index() -> str:
+            return skills_overview(workspace)
+
+        @agent.system_prompt
+        def _memory() -> str:
+            return memory_digest(workspace, recall)
+
     return agent

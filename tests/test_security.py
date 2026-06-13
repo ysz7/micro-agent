@@ -32,9 +32,11 @@ def test_sandbox_allows_inside_workspace(tmp_path):
 def test_sandbox_blocks_relative_escape(tmp_path):
     ctx, deps = _ctx(tmp_path)
     try:
-        assert "escapes the workspace" in read_file(ctx, "../secret.txt")
+        # Relative paths resolve under workspace/files/, so escaping the
+        # workspace itself takes two levels up.
+        assert "escapes the workspace" in read_file(ctx, "../../secret.txt")
         # list_dir returns a list, but the error still surfaces.
-        assert any("escapes the workspace" in e for e in list_dir(ctx, ".."))
+        assert any("escapes the workspace" in e for e in list_dir(ctx, "../.."))
     finally:
         close_deps(deps)
 

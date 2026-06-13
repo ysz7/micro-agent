@@ -37,8 +37,47 @@ class AgentDeps:
     # ``(tool_name, rendered_args) -> approve?``. ``None`` means no human is
     # available (headless/server): a confirm-listed tool then refuses to run.
     confirm_hook: Callable[[str, str], bool] | None = None
+    # Richer approval gate (Phase 11e): ``(subject, detail) -> "once"|"always"|
+    # "deny"``. Used for generated-tool activation and, when set, supersedes
+    # ``confirm_hook`` for confirm-listed tools (enabling persistent "always
+    # allow"). ``None`` headless → grants must come from persisted approvals.
+    approval_hook: Callable[[str, str], str] | None = None
     # Verticals add their own clients here (e.g. ``broker: BrokerClient``)
     extra: dict[str, Any] = field(default_factory=dict)
+
+    # ── Workspace layout (Phase 11a) ──────────────────────────────────────────
+    # Everything the agent authors lives under workspace/ in a fixed structure:
+    #   files/   ordinary task outputs (write_file's default target)
+    #   tools/   agent-written Python tools (run only after approval)
+    #   skills/  agent-written markdown procedures
+    #   memory/  reflection notes (lessons.jsonl)
+    # plus approvals.json (persisted "always allow" grants). Each accessor
+    # creates its directory lazily, so a fresh workspace stays empty until used.
+
+    def _subdir(self, name: str) -> Path:
+        d = self.workspace / name
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def files_dir(self) -> Path:
+        return self._subdir("files")
+
+    @property
+    def gen_tools_dir(self) -> Path:
+        return self._subdir("tools")
+
+    @property
+    def skills_dir(self) -> Path:
+        return self._subdir("skills")
+
+    @property
+    def memory_dir(self) -> Path:
+        return self._subdir("memory")
+
+    @property
+    def approvals_path(self) -> Path:
+        return self.workspace / "approvals.json"
 
 
 def build_deps(config: Config) -> AgentDeps:

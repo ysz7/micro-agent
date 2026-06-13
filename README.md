@@ -285,6 +285,34 @@ uv run python evals/example_eval.py
 against the live agent. Swap in your own cases and evaluators. The core never
 imports `pydantic_evals`.
 
+## Self-improvement (optional)
+
+Off by default. Enable it and the agent gets tools to extend itself, all
+sandboxed to `workspace/`:
+
+```yaml
+# settings.yaml
+self_improvement:
+  enabled: true
+```
+
+- **Skills** (the primary path) — `write_skill` / `read_skill` save reusable
+  procedures as markdown under `workspace/skills/`. Not code, so no approval; a
+  one-line index is injected into the system prompt and pulled in full on demand.
+- **Memory** — `remember(lesson)` appends to `workspace/memory/lessons.jsonl`; a
+  digest of recent lessons rides in the system prompt next session.
+- **Tools** — `write_tool` authors a Python tool under `workspace/tools/`. It
+  runs **only** after passing checks (syntax → banned-import scan → load + tool
+  contract) **and** a human approval. Approvals are three-way (once · always ·
+  deny); an "always" grant persists in `workspace/approvals.json` keyed by a hash
+  of the code, so editing the file re-triggers approval. In the REPL, `/reload`
+  (or automatic reload after approval) makes a new tool callable in the same
+  session. Headless `--serve` has no human, so activation is denied unless
+  `approvals.headless_allow_granted` honors a prior grant.
+
+The human approval — not the validation — is the security boundary; generated
+files carry a provenance header (when, prompting task, model) for auditability.
+
 ## Docker
 
 ```bash
@@ -330,15 +358,19 @@ genesis-agent/
 ├── agent/                  the frozen engine (never edited per vertical)
 │   ├── __main__.py         entrypoint: menu · one-shot · REPL · --serve
 │   ├── __init__.py         public API: `from agent import AgentDeps, parse_rss`
-│   ├── runtime/            config · context (AgentDeps) · store (JSON|SQLite) · runlog
+│   ├── runtime/            config · context (AgentDeps) · store · runlog · approvals
 │   ├── engine/             model · registry · factory · mcp · compaction · runner
-│   ├── tools/              builtins (5 tools) · toolkit (http/cache/rss/html helpers)
+│   ├── tools/              builtins · toolkit (http/cache/rss/html) · selfimprove
 │   ├── console/            display (rich tree · spinner · stats) · menu
 │   └── server/             stdlib HTTP: POST /task · SSE /task/stream · live monitor
 ├── persona.md              the vertical's system prompt          ← yours
 ├── settings.yaml           non-secret config (feeds, mcp, …)     ← yours
 ├── .env                    secrets (provider, model, key)        ← yours
 ├── tools/                  drop-in custom tools (auto-discovered) ← yours
+├── workspace/              runtime sandbox (created on first run):
+│   ├── files/              task outputs (write_file default)
+│   ├── tools/ · skills/    agent-authored, approved tools + skills (opt-in)
+│   └── memory/             reflection lessons
 ├── examples/               filled-in verticals to copy from
 ├── evals/                  copyable pydantic-evals harness (opt-in)
 ├── scripts/                install · run · fleet · new-agent helpers

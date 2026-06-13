@@ -16,6 +16,7 @@ import functools
 import importlib.util
 import inspect
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Callable
 
@@ -103,6 +104,15 @@ def discover_tools(config: Config) -> list[Callable]:
                 continue
             tools.extend(_load_module_functions(py_file))
 
+    # Self-improvement (Phase 11): the agent's own authoring tools, plus any
+    # generated tools it has written AND a human has approved. Opt-in, and
+    # added after human-authored tools so those win on name collisions.
+    if (config.settings.get("self_improvement") or {}).get("enabled"):
+        from ..tools.selfimprove import SELF_IMPROVE_TOOLS
+
+        tools.extend(SELF_IMPROVE_TOOLS)
+        tools.extend(_load_generated_tools(config))
+
     # Drop duplicate names: builtins win, then earlier files. Registering two
     # tools with one name makes Pydantic AI error or silently shadow.
     seen: set[str] = set()
@@ -147,15 +157,17 @@ def _wrap_confirm(tool: Callable) -> Callable:
 
     @functools.wraps(tool)
     def wrapper(*args, **kwargs):
+        from ..runtime.approvals import resolve_confirm
+
         ctx = args[0] if args else None
-        hook = getattr(getattr(ctx, "deps", None), "confirm_hook", None)
+        deps = getattr(ctx, "deps", None)
         rendered = _render_call(args[1:], kwargs)
-        if hook is None:
+        if deps is None or (deps.approval_hook is None and deps.confirm_hook is None):
             return (
                 f"Refused: tool '{name}' is confirm-gated but no confirmation "
                 f"channel is available (headless run); it was not executed."
             )
-        if not hook(name, rendered):
+        if not resolve_confirm(deps, name, rendered):
             return f"Refused: '{name}' was declined by the operator; not executed."
         call_args = args if has_ctx else args[1:]
         return tool(*call_args, **kwargs)
@@ -176,6 +188,66 @@ def _render_call(pos: tuple, kwargs: dict) -> str:
     items = [str(a) for a in pos] + [f"{k}={v}" for k, v in kwargs.items()]
     s = ", ".join(items).replace("\n", " ")
     return s if len(s) <= 300 else s[:299] + "…"
+
+
+def _load_generated_tools(config: Config) -> list[Callable]:
+    """Load agent-written tools from ``workspace/tools/`` — approved files only.
+
+    Each file's content is hashed and checked against the persisted approval
+    grants (Phase 11e): an unapproved file, or one edited since approval (hash
+    changed), is skipped. Loaded tools are wrapped with a wall-clock timeout
+    (containment against accidental infinite loops, not a security boundary —
+    the human approval is the boundary).
+    """
+    from ..runtime.approvals import ApprovalStore, content_hash
+
+    gen_dir = config.workspace / "tools"
+    if not gen_dir.is_dir():
+        return []
+    store = ApprovalStore(config.workspace / "approvals.json")
+    timeout = float((config.settings.get("generated_tools") or {}).get("timeout", 10))
+
+    out: list[Callable] = []
+    for py_file in sorted(gen_dir.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        try:
+            src = py_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not store.is_granted(f"tool:{py_file.stem}", content_hash(src)):
+            logger.info(
+                "generated tool %s is unapproved or changed — not loaded", py_file.name
+            )
+            continue
+        for fn in _load_module_functions(py_file):
+            out.append(_wrap_timeout(fn, timeout))
+    return out
+
+
+def _wrap_timeout(tool: Callable, timeout: float) -> Callable:
+    """Run *tool* under a wall-clock *timeout*; on overrun return an error string.
+
+    Schema is preserved (``__signature__``) so Pydantic AI still injects ctx and
+    builds the model-facing schema from the original signature. An over-running
+    call is abandoned (its thread may linger — accidents containment, not a kill).
+    """
+    @functools.wraps(tool)
+    def wrapper(*args, **kwargs):
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(tool, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeout:
+            return (
+                f"Error: generated tool '{tool.__name__}' exceeded {timeout:.0f}s "
+                f"and was abandoned."
+            )
+        finally:
+            executor.shutdown(wait=False)
+
+    wrapper.__signature__ = inspect.signature(tool)  # type: ignore[attr-defined]
+    return wrapper
 
 
 def tool_names(tools: list[Callable]) -> list[str]:

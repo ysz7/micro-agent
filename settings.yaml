@@ -81,6 +81,22 @@ limits:
 # model call holding a worker thread forever.
 # serve_timeout: 300
 
+# ── Self-improvement (optional, Phase 11) ────────────────────────────────────
+# When enabled, the agent gets tools to extend itself, all sandboxed to
+# workspace/: write_skill/read_skill (markdown procedures, no approval),
+# remember (lessons recalled in later sessions), and write_tool (Python tools
+# that run ONLY after passing validation AND a human approval — "always allow"
+# grants persist in workspace/approvals.json and re-prompt if the code changes).
+# Off by default: a fresh copy can't author or run self-written code.
+# self_improvement:
+#   enabled: true
+# memory_recall: 5          # recent lessons injected into the system prompt
+# generated_tools:
+#   timeout: 10             # wall-clock seconds a generated tool may run
+#   banned_imports: [subprocess, socket, ctypes, multiprocessing]
+# approvals:
+#   headless_allow_granted: false   # --serve: honor persisted grants without a human
+
 # ── External MCP tool servers (optional) ─────────────────────────────────────
 # Opt-in: install with `uv sync --extra mcp`, then declare servers here. Their
 # tools appear to the agent like built-ins (prefixed with `name`). stdio servers

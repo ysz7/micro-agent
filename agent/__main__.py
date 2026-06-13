@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
 
     agent = build_agent(config)
     deps = build_deps(config)
-    deps.confirm_hook = display.confirm_tool  # interactive y/N for confirm-gated tools
+    deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
     try:
         if args.task:
             return _one_shot(agent, " ".join(args.task), deps, config.model)
@@ -124,15 +124,20 @@ def _repl(agent, config, deps) -> int:
         if task in ("/quit", "/exit", "/q"):
             break
         if task == "/help":
-            display.info("Type a task. Commands: /help · /tools · /clear · /quit")
+            display.info("Type a task. Commands: /help · /tools · /clear · /reload · /quit")
             continue
         if task == "/clear":
             history.clear()
             display.info("conversation history cleared")
             continue
-        if task == "/tools":
+        if task in ("/reload", "/tools"):
             from .engine.registry import tool_names
 
+            if task == "/reload":
+                # Rebuild the agent so newly approved tools (Phase 11) register.
+                agent = build_agent(config)
+                tools = discover_tools(config)
+                display.ok("tools reloaded")
             display.info("tools: " + ", ".join(tool_names(tools)))
             continue
         try:
@@ -143,6 +148,12 @@ def _repl(agent, config, deps) -> int:
             history.extend(result.new_messages())
             if len(history) > keep:
                 del history[:-keep]
+            # A tool the agent authored + got approved this turn → hot-reload so
+            # it's callable immediately (Phase 11b).
+            if deps.extra.pop("reload_pending", False):
+                agent = build_agent(config)
+                tools = discover_tools(config)
+                display.ok("new tool activated — toolset reloaded")
         except KeyboardInterrupt:
             display.warn("interrupted")
         except UsageLimitExceeded as exc:

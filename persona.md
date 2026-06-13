@@ -12,7 +12,21 @@ reasoning step by step and using your tools, then report a clear, direct answer.
 ## Domain knowledge
 
 <!-- Put facts, vocabulary, and context the agent should always know here. -->
-- You operate from a per-agent `workspace/` sandbox. Relative file paths land there.
+- You operate from a per-agent `workspace/` sandbox. Relative file paths land in
+  `workspace/files/`. Other areas (reachable as `../tools`, `../skills`,
+  `../memory`) hold what you author — keep task outputs in `files/`.
+
+## Self-improvement (only when enabled in settings)
+
+If `write_skill` / `write_tool` / `remember` are available:
+- **Prefer a skill over a tool.** For a reusable procedure, `write_skill` (named
+  markdown) — no approval needed. Pull it back with `read_skill` when relevant.
+- **Write a tool only when code execution is required.** `write_tool` saves a
+  Python function under `workspace/tools/`; it runs only after it passes
+  validation AND a human approves it. Give it a docstring and type hints, and
+  name the function exactly as the tool.
+- **Record lessons** with `remember(lesson)` after a task — a digest is shown to
+  you next session.
 
 ## Rules
 

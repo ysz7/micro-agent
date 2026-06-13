@@ -346,6 +346,34 @@ def confirm_tool(name: str, rendered_args: str) -> bool:
             paused.start()
 
 
+def approve_action(subject: str, detail: str) -> str:
+    """3-way approval prompt (the CLI ``approval_hook``) → 'once'|'always'|'deny'.
+
+    Pauses the live spinner, asks, resumes. Default (Enter / EOF / Ctrl+C) is
+    deny — the safe answer. Used for confirm-listed tool calls and the
+    activation of agent-written tools (Phase 11).
+    """
+    paused = _active_status
+    if paused is not None:
+        paused.stop()
+    try:
+        extra = f"  [dim]{_esc(_trunc(detail, 80))}[/]" if detail else ""
+        console.print(f"  [yellow]approve[/] [bold]{_esc(subject)}[/]{extra}")
+        try:
+            resp = console.input("  [o]nce · [a]lways · [d]eny (default deny): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            return "deny"
+        if resp in ("a", "always"):
+            return "always"
+        if resp in ("o", "once", "y", "yes"):
+            return "once"
+        return "deny"
+    finally:
+        if paused is not None:
+            paused.start()
+
+
 # ── Server monitor (live request feed for `--serve` from the menu) ───────────
 
 class ServerMonitor:

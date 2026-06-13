@@ -245,7 +245,7 @@ def _chat(root) -> None:
     config = load_config(root)
     agent = build_agent(config)
     deps = build_deps(config)
-    deps.confirm_hook = display.confirm_tool  # interactive y/N for confirm-gated tools
+    deps.approval_hook = display.approve_action  # 3-way gate: confirm + activation
     try:
         _repl(agent, config, deps)
     except Exception as exc:  # noqa: BLE001 - keep the menu alive
