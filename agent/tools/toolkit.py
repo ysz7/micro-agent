@@ -7,9 +7,11 @@ parser. Import what you need inside ``tools/*.py``.
 
 from __future__ import annotations
 
+import re
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from typing import Any, Callable
 
 import httpx
@@ -127,3 +129,75 @@ def parse_rss(xml_text: str, limit: int = 50) -> list[FeedItem]:
 def _text(node: ET.Element, tag: str) -> str:
     el = node.find(tag)
     return (el.text or "").strip() if el is not None and el.text else ""
+
+
+# ── HTML → readable text ─────────────────────────────────────────────────────
+
+_DROP = {"script", "style", "head", "noscript", "template", "svg"}
+_BLOCK = {
+    "p", "div", "br", "li", "ul", "ol", "tr", "table", "section", "article",
+    "header", "footer", "nav", "aside", "blockquote", "pre", "hr", "figure",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+}
+
+
+class _TextExtractor(HTMLParser):
+    """Collect visible text, dropping markup; links render as ``text (href)``."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._drop_depth = 0
+        self._href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in _DROP:
+            self._drop_depth += 1
+        elif self._drop_depth:
+            return
+        elif tag == "a":
+            self._href = dict(attrs).get("href")
+        elif tag in _BLOCK:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _DROP:
+            self._drop_depth = max(0, self._drop_depth - 1)
+        elif self._drop_depth:
+            return
+        elif tag == "a":
+            if self._href:
+                self.parts.append(f" ({self._href})")
+            self._href = None
+        elif tag in _BLOCK:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._drop_depth == 0:
+            self.parts.append(data)
+
+
+def html_to_text(html: str) -> str:
+    """Strip HTML to readable plain text: no tags, collapsed whitespace.
+
+    Drops ``script``/``style``/``head`` and similar, renders links as
+    ``anchor text (href)``, and collapses runs of spaces and blank lines. Pure
+    stdlib — no dependency. Truncation is the caller's job (do it AFTER cleaning).
+    """
+    parser = _TextExtractor()
+    try:
+        parser.feed(html)
+    except Exception:  # noqa: BLE001 - malformed markup shouldn't raise to the tool
+        pass
+    raw = "".join(parser.parts)
+    lines = [re.sub(r"[ \t ]+", " ", ln).strip() for ln in raw.splitlines()]
+    out: list[str] = []
+    blank = False
+    for ln in lines:
+        if ln:
+            out.append(ln)
+            blank = False
+        elif not blank:
+            out.append("")
+            blank = True
+    return "\n".join(out).strip()

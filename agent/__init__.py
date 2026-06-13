@@ -15,6 +15,8 @@ live in subpackages (``agent.runtime``, ``agent.engine``, ``agent.console``,
 
 from .runtime.config import Config
 from .runtime.context import AgentDeps
-from .tools.toolkit import FeedItem, TTLCache, http_get, parse_rss
+from .tools.toolkit import FeedItem, TTLCache, html_to_text, http_get, parse_rss
 
-__all__ = ["AgentDeps", "Config", "FeedItem", "TTLCache", "http_get", "parse_rss"]
+__all__ = [
+    "AgentDeps", "Config", "FeedItem", "TTLCache", "html_to_text", "http_get", "parse_rss",
+]

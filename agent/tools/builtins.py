@@ -24,6 +24,15 @@ from pathlib import Path
 from pydantic_ai import RunContext
 
 from ..runtime.context import AgentDeps
+from .toolkit import html_to_text
+
+#: Fallback cap on a single tool's output (characters) when settings don't set
+#: ``max_tool_output``. ~20k chars ≈ 5k tokens.
+DEFAULT_MAX_TOOL_OUTPUT = 20000
+
+
+def _output_cap(ctx: RunContext[AgentDeps]) -> int:
+    return int(ctx.deps.settings.get("max_tool_output", DEFAULT_MAX_TOOL_OUTPUT))
 
 
 class _SandboxEscape(Exception):
@@ -136,14 +145,19 @@ def run_shell(ctx: RunContext[AgentDeps], command: str, timeout: int = 120) -> s
     out = out.strip() or "(no output)"
     if proc.returncode != 0:
         out = f"[exit {proc.returncode}]\n{out}"
-    return out[:20000]
+    return out[: _output_cap(ctx)]
 
 
-def fetch_url(ctx: RunContext[AgentDeps], url: str) -> str:
-    """Fetch a URL and return its body text (truncated to ~20k chars).
+def fetch_url(ctx: RunContext[AgentDeps], url: str, raw: bool = False) -> str:
+    """Fetch a URL and return its body as readable text.
+
+    HTML pages are stripped to plain text (tags removed, links rendered as
+    ``text (href)``) so the model gets prose, not markup; JSON and plain text
+    pass through unchanged. Output is truncated to the ``max_tool_output`` cap.
 
     Args:
         url: The http(s) URL to GET.
+        raw: Set True to get the untouched response body (skip HTML cleaning).
     """
     try:
         resp = ctx.deps.http.get(url)
@@ -151,7 +165,18 @@ def fetch_url(ctx: RunContext[AgentDeps], url: str) -> str:
     except Exception as exc:  # noqa: BLE001 - surface any transport error to the model
         return f"Error fetching {url}: {exc}"
     text = resp.text
-    return text[:20000] + ("…(truncated)" if len(text) > 20000 else "")
+    if not raw and _looks_like_html(resp, text):
+        text = html_to_text(text)
+    cap = _output_cap(ctx)
+    return text[:cap] + ("…(truncated)" if len(text) > cap else "")
+
+
+def _looks_like_html(resp, text: str) -> bool:
+    """True when the response is HTML by content-type or by a leading tag."""
+    if "html" in resp.headers.get("content-type", "").lower():
+        return True
+    head = text.lstrip()[:200].lower()
+    return head.startswith(("<!doctype html", "<html")) or "<html" in head
 
 
 #: The built-in tool functions, in registration order.

@@ -51,8 +51,34 @@ def _load_module_functions(py_file: Path) -> list[Callable]:
             continue
         if not (obj.__doc__ or "").strip():  # tools must be documented
             continue
+        bad = _unannotated_param(obj)
+        if bad is not None:
+            logger.warning(
+                "skipped tools/%s:%s — parameter '%s' has no type annotation "
+                "(it would degrade the model-facing schema)",
+                py_file.name, name, bad,
+            )
+            continue
         funcs.append(obj)
     return funcs
+
+
+def _unannotated_param(func: Callable) -> str | None:
+    """Name of the first non-ctx, un-annotated parameter, or None if all are fine.
+
+    The ``RunContext`` parameter is exempt (Pydantic AI injects it); ``*args`` /
+    ``**kwargs`` are ignored. Every other parameter must carry a type annotation
+    so the generated tool schema is meaningful.
+    """
+    for param in inspect.signature(func).parameters.values():
+        ann = param.annotation
+        if ann is not inspect.Parameter.empty and "RunContext" in str(ann):
+            continue  # the deps context — not part of the model schema
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            continue
+        if ann is inspect.Parameter.empty:
+            return param.name
+    return None
 
 
 def discover_tools(config: Config) -> list[Callable]:
@@ -76,6 +102,21 @@ def discover_tools(config: Config) -> list[Callable]:
             if py_file.name.startswith("_"):  # _example.py and friends are patterns
                 continue
             tools.extend(_load_module_functions(py_file))
+
+    # Drop duplicate names: builtins win, then earlier files. Registering two
+    # tools with one name makes Pydantic AI error or silently shadow.
+    seen: set[str] = set()
+    deduped: list[Callable] = []
+    for tool in tools:
+        name = getattr(tool, "__name__", "")
+        if name in seen:
+            logger.warning(
+                "duplicate tool name %r — keeping the first, skipping this one", name
+            )
+            continue
+        seen.add(name)
+        deduped.append(tool)
+    tools = deduped
 
     policy = config.settings.get("tools") or {}
     disable = set(policy.get("disable") or [])

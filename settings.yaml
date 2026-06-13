@@ -11,6 +11,14 @@ store: state.json
 # How many times Pydantic AI retries a failed tool/model call.
 retries: 2
 
+# Cap on a single tool's output, in characters (run_shell, fetch_url, the HTML
+# cleaner). ~20k chars ≈ 5k tokens — fine for cloud models, but one big result
+# can swamp a small local context. Per-setup hints:
+#   cloud (GPT/Claude)                  : 20000
+#   local 32k ctx (qwen2.5)             : 8000
+#   local 8k ctx (llama3.1:8b default)  : 3000
+max_tool_output: 20000
+
 # Local run log: append one JSON line per run (task, duration, tokens, ok/err)
 # to workspace/runs.jsonl. Greppable history, zero external services.
 # log_runs: true
