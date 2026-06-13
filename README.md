@@ -82,8 +82,17 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # Windows
   `tokens · cost · elapsed` footer.
 - **State store** — `get/set/append/all` over JSON or SQLite for cross-run
   memory; **structured output** — return a typed Pydantic model instead of prose.
-- **Headless HTTP mode** (`--serve`, zero extra deps), **optional
-  [MCP](https://modelcontextprotocol.io) servers** from config, **Docker-ready**.
+- **Conversation memory** — the REPL threads history across turns and
+  auto-compacts it into a summary when a session outgrows the context budget.
+- **Safe by default** — built-in file tools are workspace-sandboxed; a tool
+  policy can disable or human-confirm risky tools; the HTTP server binds
+  localhost and accepts an optional bearer token.
+- **Bounded & tunable** — per-run usage limits (request/token caps) and model
+  settings (temperature, `max_tokens`, …) straight from `settings.yaml`.
+- **Headless HTTP mode** (`--serve`, zero extra deps) with **SSE streaming**,
+  **optional [MCP](https://modelcontextprotocol.io) servers**, **Docker-ready**.
+- **Observable** — optional [Logfire](https://logfire.pydantic.dev) tracing, a
+  local JSONL run log, and an opt-in `pydantic-evals` harness for your vertical.
 - **Scales by copy** — one folder + one process per agent. 50 agents = 50 folders.
 
 ## Usage
@@ -111,10 +120,29 @@ uv run agent                                            # interactive REPL
 uv run agent --serve --port 8181                        # HTTP service
 ```
 
+In the **REPL**, type a task or a command: `/help` · `/tools` · `/clear`
+(forget the conversation) · `/quit`.
+
+The **HTTP server** binds `127.0.0.1` (localhost only) by default — pass
+`--host 0.0.0.0` to accept remote connections (the Docker image does this). Set
+`SERVER_TOKEN` in `.env` to require `Authorization: Bearer <token>` on every
+endpoint except `/health`.
+
 ```bash
+# one-shot JSON
 curl -X POST localhost:8181/task -H "content-type: application/json" \
      -d '{"task": "what files are in the workspace?"}'
+
+# with a bearer token (when SERVER_TOKEN is set)
+curl -X POST localhost:8181/task -H "Authorization: Bearer $SERVER_TOKEN" \
+     -H "content-type: application/json" -d '{"task": "hi"}'
+
+# stream the run as Server-Sent Events (text / tool / tool_result / done frames)
+curl -N "localhost:8181/task/stream?q=list+the+files+here"
 ```
+
+Endpoints: `POST /task` · `GET /task?q=...` (browser-friendly) ·
+`GET /task/stream?q=...` (SSE) · `GET /health` (open, no auth).
 
 ## Make a vertical agent
 
@@ -135,6 +163,48 @@ A fully filled-in vertical lives in
 [`examples/rss_research/`](examples/rss_research/) — drop-in tool,
 settings-driven feeds, store-based dedup, structured output.
 
+## Configuration
+
+Non-secret config lives in **`settings.yaml`** (loaded into `deps.settings`);
+secrets live in **`.env`**. Every key below ships commented in the template
+files with the same notes — this is just the consolidated reference.
+
+**`.env`** (secrets):
+
+| Key            | Purpose |
+|----------------|---------|
+| `PROVIDER` · `MODEL` · `API_KEY` · `BASE_URL` | model selection (see [Providers](#providers)) |
+| `SERVER_TOKEN` | optional `--serve` bearer token; unset = no auth |
+| `LOGFIRE_TOKEN` | enables Logfire tracing when `--extra obs` is installed |
+
+**`settings.yaml`** (non-secret):
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `name` | folder name | display name |
+| `store` | `state.json` | state file in `workspace/` (`*.json` or `*.db` SQLite) |
+| `retries` | `2` | Pydantic AI retries per failed tool/model call |
+| `max_tool_output` | `20000` | char cap on a tool's output (`run_shell`, `fetch_url`, HTML cleaner) |
+| `history_keep` | `40` | REPL messages kept between turns |
+| `context_budget` | `100000` | model's usable context (tokens); compaction triggers at ~60% |
+| `compaction` | `enabled: true, keep: 12` | summarize old history past the budget |
+| `limits` | `request_limit: 25` | per-run ceilings (`pydantic_ai.usage.UsageLimits`) |
+| `model_settings` | — | `temperature`, `max_tokens`, `timeout`, … passed to the model |
+| `sandbox` | `true` | confine file tools to `workspace/`; `false` to allow any path |
+| `tools` | — | `disable: [...]` (never registered) · `confirm: [...]` (human y/N) |
+| `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
+| `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
+| `mcp` | — | external [MCP](#mcp-servers-optional) servers |
+
+The tool policy is the key safety lever: `fetch_url` content is
+attacker-controlled (prompt injection), so an unconfirmed `run_shell` is an
+injection-to-RCE chain — `confirm: [run_shell]` or `disable: [run_shell]` when
+inputs are untrusted. (Headless `--serve` has no human, so a confirm-listed
+tool refuses to run rather than executing unattended.)
+
+Built-in `fetch_url` returns HTML as readable text (tags stripped, links
+rendered as `text (href)`); pass `raw=True` for the untouched markup.
+
 ## Providers
 
 | `PROVIDER`   | `MODEL` example                | API key | Notes |
@@ -145,6 +215,30 @@ settings-driven feeds, store-based dedup, structured output.
 | `ollama`     | `llama3.1:8b`                  | ✗       | offline, no key needed |
 
 Switching is a `.env` edit — no code changes.
+
+### Running on local models (Ollama)
+
+Local models work, with two gotchas:
+
+- **The context trap.** Ollama silently truncates context to its default
+  `num_ctx` (~4k) *regardless of what the model supports* — the agent "goes
+  dumb" with no error. Raise it (`OLLAMA_CONTEXT_LENGTH=32768`, or a model
+  `num_ctx`) **and** set `context_budget` in `settings.yaml` to match, so
+  compaction triggers before Ollama starts dropping your prompt.
+- **Small-context profile.** On a tight budget, shrink tool output and the
+  budget and disable heavy tools:
+
+  ```yaml
+  # settings.yaml — for an 8k-context local model
+  context_budget: 6000
+  max_tool_output: 3000
+  tools:
+    disable: [run_shell]     # keep the model focused; re-enable as needed
+  ```
+
+- **Model choice.** Use a model trained for tool calling — `qwen2.5` 7B+ is a
+  reliable floor; expect flaky tool/structured output below ~7B. These hints
+  are mirrored in `settings.yaml` comments for first-time users.
 
 ## MCP servers (optional)
 
@@ -165,6 +259,32 @@ mcp:
 Their tools appear to the agent like built-ins (prefixed with `name`). Demo:
 [`examples/mcp_demo/`](examples/mcp_demo/). Without an `mcp:` block nothing changes.
 
+## Observability (optional)
+
+Two independent, opt-in layers — the core never imports either, so default
+runs are unchanged:
+
+- **Logfire tracing:** `uv sync --extra obs`, then set `LOGFIRE_TOKEN` in
+  `.env`. Every model and tool call is traced. Absent the token it degrades
+  silently.
+- **Local run log:** `log_runs: true` in `settings.yaml` appends one JSON line
+  per run (task, duration, tokens, ok/err) to `workspace/runs.jsonl` — greppable
+  history, zero external services.
+
+## Evaluating your vertical (optional)
+
+Score your agent against golden tasks with [pydantic-evals](https://ai.pydantic.dev/evals/):
+
+```bash
+uv sync --extra evals
+uv run python evals/example_eval.py
+```
+
+[`evals/example_eval.py`](evals/example_eval.py) is a copyable template — a tiny
+`Dataset` of cases scored by a plain (no-second-model) `Contains` check, run
+against the live agent. Swap in your own cases and evaluators. The core never
+imports `pydantic_evals`.
+
 ## Docker
 
 ```bash
@@ -174,6 +294,11 @@ docker compose up --build      # serves POST /task on :8181
 
 `workspace/` is mounted as a volume, so state persists. One-shot:
 `docker run --rm --env-file .env genesis-agent uv run agent "your task"`.
+
+Inside the container the server binds `0.0.0.0` (the image's `CMD` passes
+`--host 0.0.0.0`) so the published port is reachable — the host `-p` mapping is
+the real boundary. Set `SERVER_TOKEN` in `.env` to require bearer auth when the
+port is exposed beyond localhost.
 
 ## Scheduling
 
@@ -205,16 +330,17 @@ genesis-agent/
 ├── agent/                  the frozen engine (never edited per vertical)
 │   ├── __main__.py         entrypoint: menu · one-shot · REPL · --serve
 │   ├── __init__.py         public API: `from agent import AgentDeps, parse_rss`
-│   ├── runtime/            config · context (AgentDeps) · store (JSON|SQLite)
-│   ├── engine/             model · registry · factory · mcp (builds the Agent)
-│   ├── tools/              builtins (5 tools) · toolkit (http/cache/rss helpers)
+│   ├── runtime/            config · context (AgentDeps) · store (JSON|SQLite) · runlog
+│   ├── engine/             model · registry · factory · mcp · compaction · runner
+│   ├── tools/              builtins (5 tools) · toolkit (http/cache/rss/html helpers)
 │   ├── console/            display (rich tree · spinner · stats) · menu
-│   └── server/             stdlib HTTP POST /task + live monitor
+│   └── server/             stdlib HTTP: POST /task · SSE /task/stream · live monitor
 ├── persona.md              the vertical's system prompt          ← yours
 ├── settings.yaml           non-secret config (feeds, mcp, …)     ← yours
 ├── .env                    secrets (provider, model, key)        ← yours
 ├── tools/                  drop-in custom tools (auto-discovered) ← yours
 ├── examples/               filled-in verticals to copy from
+├── evals/                  copyable pydantic-evals harness (opt-in)
 ├── scripts/                install · run · fleet · new-agent helpers
 ├── start.cmd / start.sh    double-click launchers (start menu)
 └── Dockerfile · docker-compose.yml
