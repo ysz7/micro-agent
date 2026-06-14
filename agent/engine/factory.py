@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 from typing import Any
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 
 from ..runtime.config import Config
 from ..runtime.context import AgentDeps
@@ -98,6 +98,15 @@ def build_agent(config: Config, output_type: Any | None = None) -> Agent:
     def _current_datetime() -> str:
         now = datetime.now().astimezone()
         return f"The current date and time is {now:%Y-%m-%d %H:%M:%S %Z} ({now:%A})."
+
+    # Explicit planning (Phase 13): surface the current todo checklist so the
+    # model tracks its own progress across turns. Reads per-run state from deps.
+    if (config.settings.get("planning") or {}).get("enabled"):
+        from ..tools.planning import plan_overview
+
+        @agent.system_prompt
+        def _plan(ctx: RunContext[AgentDeps]) -> str:
+            return plan_overview(ctx.deps)
 
     # Self-improvement context (Phase 11): surface the skill index and a digest
     # of recent lessons so the model knows what it has already learned/written.

@@ -190,6 +190,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
 
         def _handle_task(self, task: str) -> None:
             self._detailed = True            # use the detailed monitor feed
+            deps.extra.pop("plan", None)     # per-request todo scratchpad (Phase 13)
             start = time.monotonic()
             if monitor:
                 monitor.on_request(task, self.client_address[0])
@@ -221,6 +222,7 @@ def _make_httpd(config: Config, host: str, port: int, monitor):
         def _handle_stream(self, task: str) -> None:
             """Stream the run as Server-Sent Events: text / tool / tool_result / done."""
             self._detailed = True
+            deps.extra.pop("plan", None)     # per-request todo scratchpad (Phase 13)
             start = time.monotonic()
             if monitor:
                 monitor.on_request(task, self.client_address[0])

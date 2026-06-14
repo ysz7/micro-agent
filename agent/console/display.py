@@ -144,6 +144,7 @@ async def run_streamed(
     start = time.monotonic()
     step = {"n": 0}
     result = None
+    deps.extra.pop("plan", None)  # the todo scratchpad is per-task (Phase 13)
 
     status = console.status(f"[{EMERALD}]Thinking…", spinner="dots")
     global _active_status
@@ -162,7 +163,10 @@ async def run_streamed(
                     status.update(f"[{EMERALD}]{ev.name}…")
                 elif isinstance(ev, ToolResult):
                     status.stop()
-                    _tool_line(ev.name, ev.args, ev.content, step)
+                    if ev.name == "update_plan":
+                        _plan_block(ev.content, step)
+                    else:
+                        _tool_line(ev.name, ev.args, ev.content, step)
                     status.start()
                 elif isinstance(ev, Done):
                     result = ev.result
@@ -207,6 +211,14 @@ def _tool_line(name: str, args: Any, result: Any, step: dict) -> None:
     if detail:
         line += f"  [dim]·[/]  [dim]{_esc(detail)}[/]"
     console.print(line)
+
+
+def _plan_block(content: str, step: dict) -> None:
+    """Render the todo checklist (update_plan's result) as a small block."""
+    console.print(f"  [{EMERALD}]{_prefix(step)}[/] [bold]plan[/]")
+    colors = {"○": "dim", "▸": EMERALD, "✓": "green"}
+    for line in str(content).splitlines():
+        console.print(f"       [{colors.get(line[:1], 'dim')}]{_esc(line)}[/]")
 
 
 def _tree_close(step: dict) -> None:

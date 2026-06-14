@@ -117,6 +117,15 @@ retries: 2
 #   long research endpoints : 600+
 # serve_timeout: 300
 
+# ── Planning (optional) ─────────────────────────────────────────────────────────
+# Gives the agent `update_plan` — a short todo checklist it keeps up to date on
+# multi-step tasks. The current plan is shown to the model each turn and rendered
+# in the console. It's a scratchpad, not enforced control flow. OFF by default,
+# but cheap — recommended ON for agentic, multi-step verticals; little point for
+# simple one-shot Q&A.
+# planning:
+#   enabled: true
+
 # ── Self-improvement (optional) ─────────────────────────────────────────────────
 # Lets the agent extend itself, all sandboxed to workspace/. OFF by default — a
 # fresh copy can't author or run self-written code. When enabled it gains:

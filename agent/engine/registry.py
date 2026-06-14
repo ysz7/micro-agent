@@ -104,6 +104,12 @@ def discover_tools(config: Config) -> list[Callable]:
                 continue
             tools.extend(_load_module_functions(py_file))
 
+    # Explicit planning (Phase 13): an opt-in todo-scratchpad tool.
+    if (config.settings.get("planning") or {}).get("enabled"):
+        from ..tools.planning import PLANNING_TOOLS
+
+        tools.extend(PLANNING_TOOLS)
+
     # Self-improvement (Phase 11): the agent's own authoring tools, plus any
     # generated tools it has written AND a human has approved. Opt-in, and
     # added after human-authored tools so those win on name collisions.
