@@ -229,15 +229,18 @@ def _tree_close(step: dict) -> None:
 
 
 def inline_stats(usage: Any, elapsed: float, model: str = "") -> None:
-    """Compact footer: tokens · cost · elapsed."""
+    """Compact footer: tokens · cache · cost · elapsed."""
     inp = getattr(usage, "input_tokens", 0) or 0
     out = getattr(usage, "output_tokens", 0) or 0
     total = inp + out
     cost = _estimate_cost(inp, out, model)
     cost_str = f"  ·  [green]${cost:.4f}[/]" if cost else ""
+    # Prompt-cache reads (Phase 16) — visible confirmation that caching is working.
+    cache_read = getattr(usage, "cache_read_tokens", 0) or 0
+    cache_str = f"  ·  [green]{cache_read:,} cached[/]" if cache_read else ""
     console.print(
         f"  [dim]↳  {total:,} tok ([dim]{inp:,}→{out:,}[/])"
-        f"{cost_str}  ·  {elapsed:.1f}s[/]\n"
+        f"{cache_str}{cost_str}  ·  {elapsed:.1f}s[/]\n"
     )
 
 

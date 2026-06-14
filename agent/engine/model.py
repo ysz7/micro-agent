@@ -39,3 +39,23 @@ def build_model(config: Config) -> Model:
         "openai, anthropic, openrouter, ollama (or set BASE_URL for a "
         "custom OpenAI-compatible endpoint)."
     )
+
+
+def cache_model_settings(config: Config) -> dict:
+    """Provider-specific prompt-caching model settings (empty unless enabled).
+
+    Enabled by ``prompt_caching: true``. For Anthropic we cache the **tool
+    definitions** — a large, fully static prefix that's identical every run, so
+    the second run within the cache TTL reads it instead of re-billing it.
+
+    We deliberately do NOT cache the system instructions: genesis injects a
+    dynamic datetime (and optionally skills/memory/plan) system prompt, and
+    Anthropic puts the cache breakpoint on the *last* system block — so a
+    changing system prompt would be written to cache every run but never read.
+    OpenAI caches automatically (nothing to set); other providers: no-op.
+    """
+    if not config.settings.get("prompt_caching"):
+        return {}
+    if config.provider == "anthropic":
+        return {"anthropic_cache_tool_definitions": True}
+    return {}

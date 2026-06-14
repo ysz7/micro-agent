@@ -200,6 +200,7 @@ files with the same notes — this is just the consolidated reference.
 | `serve_timeout` | `300` | per-task wall-clock seconds for `--serve` → `504` |
 | `log_runs` | `false` | append one JSON line per run to `workspace/runs.jsonl` |
 | `attachments` | `max_mb: 10` | per-image/PDF size cap for multimodal input |
+| `prompt_caching` | `false` | reuse the provider's prompt cache (Anthropic: tool defs) |
 | `mcp` | — | external [MCP](#mcp-servers-optional) servers |
 
 The tool policy is the key safety lever: `fetch_url` content is

@@ -117,6 +117,15 @@ retries: 2
 #   long research endpoints : 600+
 # serve_timeout: 300
 
+# ── Prompt caching (optional) ─────────────────────────────────────────────────────
+# Reuse the provider's prompt cache for the static prefix to cut cost/latency on
+# repeated runs. Anthropic: caches the (static) tool definitions — the footer
+# shows "N cached" when a run reads from cache. OpenAI caches automatically;
+# other providers: no-op. Instructions aren't cached (the dynamic datetime prompt
+# would prevent hits). Cache TTL is a few minutes, so it helps bursts/loops.
+# OFF by default.
+# prompt_caching: true
+
 # ── Multimodal input (optional) ──────────────────────────────────────────────────
 # Attach images/PDFs to a run: one-shot `--image PATH_OR_URL`, drag a file into
 # the REPL, or POST `{"task": ..., "images": ["https://..."]}` (server = URLs

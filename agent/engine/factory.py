@@ -19,7 +19,7 @@ from ..runtime.config import Config
 from ..runtime.context import AgentDeps
 from .compaction import build_history_processor
 from .mcp import load_mcp_servers
-from .model import build_model
+from .model import build_model, cache_model_settings
 from .registry import discover_tools
 
 logger = logging.getLogger("agent.obs")
@@ -80,9 +80,11 @@ def build_agent(
     if output_type is not None:
         kwargs["output_type"] = output_type
     # Model knobs (temperature, max_tokens, timeout, …) passed through as-is so
-    # new Pydantic AI ModelSettings keys work without changing the template.
-    if config.model_settings:
-        kwargs["model_settings"] = config.model_settings
+    # new Pydantic AI ModelSettings keys work without changing the template,
+    # merged with any provider prompt-caching settings (Phase 16, opt-in).
+    model_settings = {**(config.model_settings or {}), **cache_model_settings(config)}
+    if model_settings:
+        kwargs["model_settings"] = model_settings
 
     # History auto-compaction: when the conversation outgrows the context
     # budget, old messages are replaced by a model-written summary (see
