@@ -8,6 +8,26 @@ If you copied this template, compare this file against upstream to see what
 changed since your copy — and skim the **Security** / **Changed** notes before
 syncing, since some releases change defaults.
 
+## [0.6.0] — 2026-06-14
+
+Update awareness, a settings.yaml that teaches itself, and a smarter scaffold.
+
+### Added
+- **"Check for updates"** menu item — compares your local version (from
+  `pyproject.toml`) against the newest semver tag on GitHub and links to the
+  changelog / project page. Read-only: it never auto-replaces the engine.
+  Override the repo it checks with the `GENESIS_REPO` env var.
+- `read_tool` — read back an agent-authored tool's source (provenance header
+  stripped) so it can be revised and re-submitted (self-improvement; opt-in).
+
+### Changed
+- `settings.yaml` rewritten as a fully-commented, sectioned reference: every key
+  states what it does, its default, and recommended values per setup (cloud vs
+  small local model) — configurable from the file alone, no source diving.
+- `agent --new` now scaffolds that same fully-commented `settings.yaml` (not a
+  stripped one) with provider-aware defaults — choosing Ollama presets a
+  small-context profile and adds a `num_ctx` note — and copies `.env.example`.
+
 ## [0.5.0] — 2026-06-13
 
 Agent self-improvement — **off by default** (`self_improvement.enabled`).

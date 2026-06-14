@@ -289,6 +289,40 @@ def _serve(root) -> None:
     monitor.print_stats()                            # closing summary on the way out
 
 
+def _check_updates(root) -> None:
+    """Read-only: compare the local version against the newest tag on GitHub."""
+    from ..runtime import updates
+
+    console.clear()
+    cur = updates.current_version(root)
+    console.print(f"\n  current version  [bold]{cur}[/]")
+    with console.status(f"[{EMERALD}]checking GitHub…", spinner="dots"):
+        latest = updates.latest_version()
+
+    url = updates.repo_url()
+    if latest is None:
+        display.warn("couldn't determine the latest version (no tags found, or GitHub unreachable)")
+    elif updates.is_newer(latest, cur):
+        display.info(f"a newer version is available: [bold]{latest}[/]")
+        console.print(f"  [dim]changelog  {url}/blob/main/CHANGELOG.md[/]")
+        console.print(f"  [dim]project    {url}[/]")
+        try:
+            ans = input("  open the project page in your browser? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ans = ""
+        if ans in ("y", "yes"):
+            import webbrowser
+
+            webbrowser.open(url)
+    else:
+        display.ok(f"you're on the latest version ({cur})")
+
+    try:
+        input("\n  press Enter to return…")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def _settings(root: Path) -> None:
     env_file = root / ".env"
     while True:
@@ -492,6 +526,7 @@ def run(root: str | None = None) -> int:
                 "Settings",
                 "Serve (HTTP + live monitor)",
                 "Create a new agent",
+                "Check for updates",
                 "Quit",
             ],
             subtitle=_status(root_path),
@@ -508,6 +543,8 @@ def run(root: str | None = None) -> int:
             from . import wizard
 
             wizard.run_wizard(root)
+        elif choice == 5:
+            _check_updates(root_path)
         else:
             console.clear()
             return 0
